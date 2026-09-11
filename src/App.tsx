@@ -14,11 +14,15 @@ import {
   Send,
   X,
 } from "lucide-react";
-import { huddleApi, Message } from "./lib/huddle-api";
+import {
+  Channel,
+  huddleApi,
+  Message,
+  Workspace as WorkspaceType,
+} from "./lib/huddle-api";
 
 type Screen =
   "welcome" | "signup" | "signup-success" | "login" | "huddle-home" | "chat";
-const channels = ["general", "announcements", "product-team", "engineering"];
 
 function BrandPanel({ mode }: { mode: "signup" | "login" }) {
   const signup = mode === "signup";
@@ -241,14 +245,47 @@ function SignupSuccess({ navigate }: { navigate: (screen: Screen) => void }) {
   );
 }
 
-function HuddleHome({ navigate }: { navigate: (screen: Screen) => void }) {
+function HuddleHome({
+  openWorkspace,
+}: {
+  openWorkspace: (workspaceId: number) => void;
+}) {
   const [modal, setModal] = useState<"create" | "join" | null>(null);
   const [workspaceName, setWorkspaceName] = useState("");
   const [workspaceUrl, setWorkspaceUrl] = useState("");
   const [workspaceCode, setWorkspaceCode] = useState("");
-  function enterWorkspace(event: FormEvent) {
+  const [workspaces, setWorkspaces] = useState<WorkspaceType[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    huddleApi
+      .listWorkspaces()
+      .then(setWorkspaces)
+      .catch(() => setWorkspaces([]));
+  }, []);
+
+  async function enterWorkspace(event: FormEvent) {
     event.preventDefault();
-    navigate("chat");
+    setSubmitting(true);
+    setError("");
+    try {
+      if (modal === "create") {
+        const workspace = await huddleApi.createWorkspace(workspaceName);
+        openWorkspace(workspace.id);
+      } else {
+        const workspaceId = Number(workspaceCode);
+        if (!Number.isInteger(workspaceId) || workspaceId < 1) {
+          throw new Error("Enter a valid numeric workspace ID.");
+        }
+        await huddleApi.joinWorkspace(workspaceId);
+        openWorkspace(workspaceId);
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to continue.");
+    } finally {
+      setSubmitting(false);
+    }
   }
   return (
     <main className="huddle-home">
@@ -295,6 +332,15 @@ function HuddleHome({ navigate }: { navigate: (screen: Screen) => void }) {
             >
               Join a huddle
             </button>
+            {workspaces.map((workspace) => (
+              <button
+                className="secondary-button"
+                key={workspace.id}
+                onClick={() => openWorkspace(workspace.id)}
+              >
+                Open {workspace.name}
+              </button>
+            ))}
           </div>
         </div>
       </section>
@@ -323,6 +369,12 @@ function HuddleHome({ navigate }: { navigate: (screen: Screen) => void }) {
                 ? "Give your team a home. You can invite teammates right after."
                 : "Enter the workspace code your teammate shared with you."}
             </p>
+            {error && (
+              <div className="error-banner" role="alert">
+                <AlertCircle size={20} />
+                <span>{error}</span>
+              </div>
+            )}
             {modal === "create" ? (
               <>
                 <label>
@@ -357,21 +409,27 @@ function HuddleHome({ navigate }: { navigate: (screen: Screen) => void }) {
               </>
             ) : (
               <label>
-                <span>Workspace Code</span>
+                <span>Workspace ID</span>
                 <input
                   required
                   autoFocus
                   value={workspaceCode}
-                  onChange={(event) =>
-                    setWorkspaceCode(event.target.value.toUpperCase())
-                  }
-                  placeholder="8F3K2P"
-                  maxLength={12}
+                  onChange={(event) => setWorkspaceCode(event.target.value)}
+                  placeholder="e.g. 12"
+                  inputMode="numeric"
                 />
               </label>
             )}
-            <button className="primary-button" type="submit">
-              {modal === "create" ? "Create workspace" : "Join workspace"}
+            <button
+              className="primary-button"
+              type="submit"
+              disabled={submitting}
+            >
+              {submitting
+                ? "Please wait…"
+                : modal === "create"
+                  ? "Create workspace"
+                  : "Join workspace"}
             </button>
             <button
               className="modal-back"
@@ -435,8 +493,15 @@ function Welcome({ navigate }: { navigate: (screen: Screen) => void }) {
   );
 }
 
-function Workspace({ navigate }: { navigate: (screen: Screen) => void }) {
-  const [channel, setChannel] = useState("general");
+function Workspace({
+  workspaceId,
+  navigate,
+}: {
+  workspaceId: number;
+  navigate: (screen: Screen) => void;
+}) {
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [channel, setChannel] = useState<Channel | null>(null);
   const [draft, setDraft] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -445,15 +510,32 @@ function Workspace({ navigate }: { navigate: (screen: Screen) => void }) {
   >("loading");
   const [sending, setSending] = useState(false);
   const visibleMessages = useMemo(
-    () => messages.filter((message) => message.channel === channel),
+    () =>
+      channel
+        ? messages.filter((message) => message.channelId === channel.id)
+        : [],
     [messages, channel],
   );
+
+  useEffect(() => {
+    huddleApi
+      .listChannels(workspaceId)
+      .then((items) => {
+        setChannels(items);
+        setChannel(
+          items.find((item) => item.name === "general") ?? items[0] ?? null,
+        );
+      })
+      .catch(() => setChannelState("error"));
+  }, [workspaceId]);
+
   async function loadChannel() {
+    if (!channel) return;
     setChannelState("loading");
     try {
-      const loaded = await huddleApi.loadMessages(channel);
+      const loaded = await huddleApi.loadMessages(channel.id);
       setMessages((current) => [
-        ...current.filter((message) => message.channel !== channel),
+        ...current.filter((message) => message.channelId !== channel.id),
         ...loaded,
       ]);
       setChannelState("ready");
@@ -463,9 +545,10 @@ function Workspace({ navigate }: { navigate: (screen: Screen) => void }) {
   }
   useEffect(() => {
     void loadChannel();
-  }, [channel]);
+  }, [channel?.id]);
   useEffect(() => {
-    return huddleApi.subscribeToMessages(channel, (message) => {
+    if (!channel) return;
+    return huddleApi.subscribeToMessages(channel.id, (message) => {
       setMessages((current) => {
         const existingIndex = current.findIndex(
           (item) => item.id === message.id,
@@ -477,16 +560,13 @@ function Workspace({ navigate }: { navigate: (screen: Screen) => void }) {
         return next;
       });
     });
-  }, [channel]);
+  }, [channel?.id]);
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
-    if (!draft.trim() || sending) return;
+    if (!channel || !draft.trim() || sending) return;
     setSending(true);
     try {
-      const message = await huddleApi.sendMessage({
-        channel,
-        body: draft.trim(),
-      });
+      const message = await huddleApi.sendMessage(channel.id, draft.trim());
       setMessages((current) =>
         current.some((item) => item.id === message.id)
           ? current
@@ -517,15 +597,15 @@ function Workspace({ navigate }: { navigate: (screen: Screen) => void }) {
         <nav>
           {channels.map((item) => (
             <button
-              key={item}
-              className={channel === item ? "active" : ""}
+              key={item.id}
+              className={channel?.id === item.id ? "active" : ""}
               onClick={() => {
                 setChannel(item);
                 setMobileOpen(false);
               }}
             >
               <Hash size={14} />
-              {item}
+              {item.name}
             </button>
           ))}
         </nav>
@@ -557,7 +637,11 @@ function Workspace({ navigate }: { navigate: (screen: Screen) => void }) {
         <header className="channel-header">
           <div>
             <Hash size={15} />
-            <strong>{channelState === "loading" ? "Loading…" : channel}</strong>
+            <strong>
+              {channelState === "loading"
+                ? "Loading…"
+                : (channel?.name ?? "Channel")}
+            </strong>
           </div>
           <span>{channelState === "ready" ? "14 members" : ""}</span>
         </header>
@@ -588,18 +672,18 @@ function Workspace({ navigate }: { navigate: (screen: Screen) => void }) {
                 <span />
               </div>
               <h1>
-                {channel === "general" ? (
+                {channel?.name === "general" ? (
                   <>
                     Everyone starts in <b># general</b>
                   </>
                 ) : (
                   <>
-                    Welcome to <b># {channel}</b>
+                    Welcome to <b># {channel?.name}</b>
                   </>
                 )}
               </h1>
               <p>
-                {channel === "general"
+                {channel?.name === "general"
                   ? "Share general information with your team here"
                   : "This is a dedicated space for your team"}
               </p>
@@ -646,8 +730,8 @@ function Workspace({ navigate }: { navigate: (screen: Screen) => void }) {
               disabled={channelState !== "ready" || sending}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder={`Message #${channel}`}
-              aria-label={`Message ${channel}`}
+              placeholder={`Message #${channel?.name ?? "channel"}`}
+              aria-label={`Message ${channel?.name ?? "channel"}`}
             />
             <button
               type="submit"
@@ -663,7 +747,13 @@ function Workspace({ navigate }: { navigate: (screen: Screen) => void }) {
           </div>
         </form>
       </section>
-      <button className="signout-button" onClick={() => navigate("login")}>
+      <button
+        className="signout-button"
+        onClick={() => {
+          huddleApi.signOut();
+          navigate("login");
+        }}
+      >
         Sign out
       </button>
     </main>
@@ -671,11 +761,18 @@ function Workspace({ navigate }: { navigate: (screen: Screen) => void }) {
 }
 export default function App() {
   const [screen, setScreen] = useState<Screen>("welcome");
+  const [workspaceId, setWorkspaceId] = useState<number | null>(null);
+  const openWorkspace = (id: number) => {
+    setWorkspaceId(id);
+    setScreen("chat");
+  };
   if (screen === "signup" || screen === "login")
     return <AuthScreen mode={screen} navigate={setScreen} />;
   if (screen === "signup-success")
     return <SignupSuccess navigate={setScreen} />;
-  if (screen === "huddle-home") return <HuddleHome navigate={setScreen} />;
-  if (screen === "chat") return <Workspace navigate={setScreen} />;
+  if (screen === "huddle-home")
+    return <HuddleHome openWorkspace={openWorkspace} />;
+  if (screen === "chat" && workspaceId)
+    return <Workspace workspaceId={workspaceId} navigate={setScreen} />;
   return <Welcome navigate={setScreen} />;
 }

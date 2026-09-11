@@ -1,41 +1,36 @@
-# Realtime messaging handoff
+# Backend integration
 
-The frontend messaging UI connects through Socket.IO in
-`src/lib/huddle-api.ts`. It joins and leaves channel rooms, listens for incoming
-messages, sends messages with acknowledgement support, reconnects automatically,
-and prevents duplicate messages in the UI.
+The frontend connects to the deployed Huddle backend on Render.
 
-The current event-name defaults are:
+## REST
 
-- `join_channel`
-- `leave_channel`
-- `send_message`
-- `new_message`
+- `POST /api/auth/register` registers a user and stores the returned JWT.
+- `POST /api/auth/login` authenticates a user and stores the returned JWT.
+- `GET /api/workspaces` retrieves the signed-in user's workspaces.
+- `POST /api/workspaces` creates a workspace.
+- `POST /api/workspaces/:id/join` joins a workspace by numeric ID.
+- `GET /api/workspaces/:id/channels` retrieves real channel IDs.
+- `GET /api/channels/:id/messages` retrieves persisted message history.
+- `POST /api/channels/:id/messages` persists a message before broadcast.
 
-They can be changed without editing source code through the
-`VITE_SOCKET_*_EVENT` environment variables. The backend team must confirm that
-these names and payload fields match the server implementation.
+Authenticated requests use `Authorization: Bearer <JWT>`.
 
-## Backend details needed
+## Socket.IO
 
-- Socket.IO server URL
-- Connection path, if it differs from `/socket.io`
-- Authentication method and token source
-- Join/leave channel event names and payloads
-- Incoming-message event name and payload
-- Send-message event name, acknowledgement payload, and error payload
-- Reconnection and message-history expectations
+The client connects with `auth: { token: JWT }` and uses the backend events
+defined on the `dev` branch:
 
-## Frontend message shape
+- `channel:join` with the numeric channel ID
+- `channel:leave` with the numeric channel ID
+- `message:new` for live messages broadcast after a successful REST write
 
-```ts
-type Message = {
-  id: string;
-  channel: string;
-  body: string;
-  author: string;
-  time: string;
-};
-```
+Socket.IO is used for live delivery. The REST API remains the source of truth
+for message persistence and history.
 
-Keep transport-specific code inside the adapter. The UI already covers channel loading, connection errors, empty channels, populated conversations, sending, and sent messages.
+## Environment
+
+    VITE_API_URL=https://huddle-api-yott.onrender.com/api
+    VITE_SOCKET_URL=https://huddle-api-yott.onrender.com
+
+The backend's `CLIENT_ORIGIN` must include the deployed frontend origin or the
+browser will reject both REST and Socket.IO connections through CORS.

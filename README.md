@@ -20,8 +20,8 @@ npm run preview
 
 ## Backend integration
 
-Network calls are isolated in `src/lib/huddle-api.ts`. Channel messages use
-Socket.IO with automatic reconnection, room join/leave events, acknowledgements,
-and incoming-message subscriptions. The socket URL and event names are configured
-through Vite environment variables. See `docs/REALTIME_INTEGRATION.md` for the
-backend handoff checklist.
+Network calls are isolated in `src/lib/huddle-api.ts`. Registration, login,
+workspace/channel retrieval, and message persistence use the deployed REST API.
+JWTs are stored in browser storage and passed to Socket.IO, which handles
+channel rooms and live `message:new` delivery. See
+`docs/REALTIME_INTEGRATION.md` for the integration contract.
