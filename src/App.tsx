@@ -1,28 +1,39 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  ArrowLeft,
   ChevronDown,
+  Copy,
   Eye,
   EyeOff,
   Hash,
   Headphones,
   Home as HomeIcon,
   LoaderCircle,
+  LogOut,
   LockKeyhole,
   Menu,
   Plus,
   Send,
+  Settings,
   X,
 } from "lucide-react";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import {
   Channel,
   huddleApi,
   Message,
+  User,
   Workspace as WorkspaceType,
 } from "./lib/huddle-api";
 
-type Screen =
-  "welcome" | "signup" | "signup-success" | "login" | "huddle-home" | "chat";
+type NavigateTo = (path: string) => void;
 
 function BrandPanel({ mode }: { mode: "signup" | "login" }) {
   const signup = mode === "signup";
@@ -96,7 +107,7 @@ function AuthScreen({
   navigate,
 }: {
   mode: "signup" | "login";
-  navigate: (screen: Screen) => void;
+  navigate: NavigateTo;
 }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -114,10 +125,10 @@ function AuthScreen({
     try {
       if (mode === "signup") {
         await huddleApi.signUp({ name, email, password });
-        navigate("signup-success");
+        navigate("/signup/success");
       } else {
         await huddleApi.logIn({ email, password, remember });
-        navigate("huddle-home");
+        navigate("/workspaces");
       }
     } catch {
       setError("We couldn’t complete that request. Please try again.");
@@ -214,7 +225,7 @@ function AuthScreen({
             {signup ? "Already have an account?" : "New to Huddle?"}{" "}
             <button
               type="button"
-              onClick={() => navigate(signup ? "login" : "signup")}
+              onClick={() => navigate(signup ? "/login" : "/signup")}
             >
               {signup ? "Log in" : "Create an account"}
             </button>
@@ -225,7 +236,7 @@ function AuthScreen({
   );
 }
 
-function SignupSuccess({ navigate }: { navigate: (screen: Screen) => void }) {
+function SignupSuccess({ navigate }: { navigate: NavigateTo }) {
   return (
     <main className="success-screen">
       <section className="success-card" role="status" aria-live="polite">
@@ -236,7 +247,7 @@ function SignupSuccess({ navigate }: { navigate: (screen: Screen) => void }) {
             <br />
             Login to access your account
           </p>
-          <button className="primary-button" onClick={() => navigate("login")}>
+          <button className="primary-button" onClick={() => navigate("/login")}>
             Login
           </button>
         </div>
@@ -245,24 +256,100 @@ function SignupSuccess({ navigate }: { navigate: (screen: Screen) => void }) {
   );
 }
 
+function initials(name?: string) {
+  return (name || "Huddle User")
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+function ProfileMenu({
+  user,
+  navigate,
+  compact = false,
+}: {
+  user: User | null;
+  navigate: NavigateTo;
+  compact?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`profile-menu-wrap ${compact ? "compact" : ""}`}>
+      <button
+        className={compact ? "rail-avatar" : "user-footer"}
+        type="button"
+        aria-label="Open profile menu"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        {compact ? (
+          <>
+            {initials(user?.name)}
+            <i />
+          </>
+        ) : (
+          <>
+            <span className="avatar">
+              {initials(user?.name)}
+              <i />
+            </span>
+            <span>
+              <strong>{user?.name ?? "Huddle user"}</strong>
+              <small><i /> Online</small>
+            </span>
+            <ChevronDown size={16} />
+          </>
+        )}
+      </button>
+      {open && (
+        <div className="profile-popup" role="menu">
+          <div className="profile-popup-user">
+            <strong>{user?.name ?? "Huddle user"}</strong>
+            <span>{user?.email ?? "Signed in"}</span>
+          </div>
+          <button type="button" role="menuitem" onClick={() => navigate("/settings")}>
+            <Settings size={16} /> Settings
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="danger"
+            onClick={() => {
+              huddleApi.signOut();
+              navigate("/login");
+            }}
+          >
+            <LogOut size={16} /> Log out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HuddleHome({
   openWorkspace,
+  navigate,
 }: {
   openWorkspace: (workspaceId: number) => void;
+  navigate: NavigateTo;
 }) {
   const [modal, setModal] = useState<"create" | "join" | null>(null);
   const [workspaceName, setWorkspaceName] = useState("");
-  const [workspaceUrl, setWorkspaceUrl] = useState("");
   const [workspaceCode, setWorkspaceCode] = useState("");
   const [workspaces, setWorkspaces] = useState<WorkspaceType[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [user, setUser] = useState<User | null>(huddleApi.getCurrentUser());
 
   useEffect(() => {
     huddleApi
       .listWorkspaces()
       .then(setWorkspaces)
       .catch(() => setWorkspaces([]));
+    huddleApi.getProfile().then(setUser).catch(() => undefined);
   }, []);
 
   async function enterWorkspace(event: FormEvent) {
@@ -302,10 +389,7 @@ function HuddleHome({
             <Plus size={18} />
           </button>
         </div>
-        <button className="rail-avatar" aria-label="Open profile">
-          JF
-          <i />
-        </button>
+        <ProfileMenu user={user} navigate={navigate} compact />
       </aside>
       <section className="huddle-empty">
         <div className="huddle-empty-content">
@@ -317,7 +401,11 @@ function HuddleHome({
             <h1>
               Great teams <img src="/figma/huddle-logo.png" alt="Huddle" /> here
             </h1>
-            <p>You do not belong to any huddles yet</p>
+            <p>
+              {workspaces.length
+                ? "Choose a huddle to continue collaborating"
+                : "You do not belong to any huddles yet"}
+            </p>
           </div>
           <div className="huddle-actions">
             <button
@@ -367,7 +455,7 @@ function HuddleHome({
             <p>
               {modal === "create"
                 ? "Give your team a home. You can invite teammates right after."
-                : "Enter the workspace code your teammate shared with you."}
+                : "Enter the workspace ID your teammate shared with you."}
             </p>
             {error && (
               <div className="error-banner" role="alert">
@@ -383,29 +471,13 @@ function HuddleHome({
                     required
                     autoFocus
                     value={workspaceName}
-                    onChange={(event) => {
-                      setWorkspaceName(event.target.value);
-                      if (!workspaceUrl)
-                        setWorkspaceUrl(
-                          event.target.value
-                            .toLowerCase()
-                            .trim()
-                            .replace(/[^a-z0-9]+/g, "-")
-                            .replace(/^-|-$/g, ""),
-                        );
-                    }}
+                    onChange={(event) => setWorkspaceName(event.target.value)}
                     placeholder="Acme Team"
                   />
                 </label>
-                <label>
-                  <span>Workspace URL</span>
-                  <input
-                    required
-                    value={workspaceUrl}
-                    onChange={(event) => setWorkspaceUrl(event.target.value)}
-                    placeholder="acme-team.huddle.app"
-                  />
-                </label>
+                <small className="modal-hint">
+                  Huddle will create a shareable workspace ID for your team.
+                </small>
               </>
             ) : (
               <label>
@@ -445,7 +517,7 @@ function HuddleHome({
   );
 }
 
-function Welcome({ navigate }: { navigate: (screen: Screen) => void }) {
+function Welcome({ navigate }: { navigate: NavigateTo }) {
   return (
     <main className="welcome">
       <img src="/figma/huddle-logo.png" alt="Huddle" className="welcome-logo" />
@@ -464,13 +536,13 @@ function Welcome({ navigate }: { navigate: (screen: Screen) => void }) {
           <div className="welcome-actions">
             <button
               className="primary-button"
-              onClick={() => navigate("signup")}
+              onClick={() => navigate("/signup")}
             >
               Get Started
             </button>
             <button
               className="secondary-button"
-              onClick={() => navigate("login")}
+              onClick={() => navigate("/login")}
             >
               Find existing teams
             </button>
@@ -493,40 +565,50 @@ function Welcome({ navigate }: { navigate: (screen: Screen) => void }) {
   );
 }
 
-function Workspace({
-  workspaceId,
-  navigate,
-}: {
-  workspaceId: number;
-  navigate: (screen: Screen) => void;
-}) {
+function Workspace() {
+  const navigate = useNavigate();
+  const params = useParams();
+  const workspaceId = Number(params.workspaceId);
+  const routeChannelId = Number(params.channelId);
+  const [workspace, setWorkspace] = useState<WorkspaceType | null>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
-  const [channel, setChannel] = useState<Channel | null>(null);
   const [draft, setDraft] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [channelState, setChannelState] = useState<
-    "loading" | "ready" | "error"
-  >("loading");
+  const [channelState, setChannelState] = useState<"loading" | "ready" | "error">("loading");
   const [sending, setSending] = useState(false);
+  const [channelModal, setChannelModal] = useState(false);
+  const [channelName, setChannelName] = useState("");
+  const [channelDescription, setChannelDescription] = useState("");
+  const [creatingChannel, setCreatingChannel] = useState(false);
+  const [modalError, setModalError] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [user, setUser] = useState<User | null>(huddleApi.getCurrentUser());
+  const channel = useMemo(
+    () => channels.find((item) => item.id === routeChannelId) ?? null,
+    [channels, routeChannelId],
+  );
   const visibleMessages = useMemo(
-    () =>
-      channel
-        ? messages.filter((message) => message.channelId === channel.id)
-        : [],
+    () => channel ? messages.filter((message) => message.channelId === channel.id) : [],
     [messages, channel],
   );
 
   useEffect(() => {
-    huddleApi
-      .listChannels(workspaceId)
-      .then((items) => {
+    if (!Number.isInteger(workspaceId) || workspaceId < 1) {
+      navigate("/workspaces", { replace: true });
+      return;
+    }
+    Promise.all([huddleApi.listWorkspaces(), huddleApi.listChannels(workspaceId)])
+      .then(([workspaces, items]) => {
+        setWorkspace(workspaces.find((item) => item.id === workspaceId) ?? null);
         setChannels(items);
-        setChannel(
-          items.find((item) => item.name === "general") ?? items[0] ?? null,
-        );
+        if (!Number.isInteger(routeChannelId) || !items.some((item) => item.id === routeChannelId)) {
+          const first = items.find((item) => item.name === "general") ?? items[0];
+          if (first) navigate(`/workspaces/${workspaceId}/channels/${first.id}`, { replace: true });
+        }
       })
       .catch(() => setChannelState("error"));
+    huddleApi.getProfile().then(setUser).catch(() => undefined);
   }, [workspaceId]);
 
   async function loadChannel() {
@@ -543,236 +625,214 @@ function Workspace({
       setChannelState("error");
     }
   }
+
   useEffect(() => {
     void loadChannel();
   }, [channel?.id]);
+
   useEffect(() => {
     if (!channel) return;
     return huddleApi.subscribeToMessages(channel.id, (message) => {
       setMessages((current) => {
-        const existingIndex = current.findIndex(
-          (item) => item.id === message.id,
-        );
+        const existingIndex = current.findIndex((item) => item.id === message.id);
         if (existingIndex === -1) return [...current, message];
-
         const next = [...current];
         next[existingIndex] = message;
         return next;
       });
     });
   }, [channel?.id]);
+
+  async function selectChannel(item: Channel) {
+    try {
+      await huddleApi.joinChannel(item.id);
+      navigate(`/workspaces/${workspaceId}/channels/${item.id}`);
+      setMobileOpen(false);
+    } catch (cause) {
+      setChannelState("error");
+      setModalError(cause instanceof Error ? cause.message : "Unable to open channel.");
+    }
+  }
+
+  async function createChannel(event: FormEvent) {
+    event.preventDefault();
+    setCreatingChannel(true);
+    setModalError("");
+    try {
+      const created = await huddleApi.createChannel(workspaceId, channelName, channelDescription);
+      setChannels((current) => [...current, created]);
+      setChannelModal(false);
+      setChannelName("");
+      setChannelDescription("");
+      navigate(`/workspaces/${workspaceId}/channels/${created.id}`);
+    } catch (cause) {
+      setModalError(cause instanceof Error ? cause.message : "Unable to create channel.");
+    } finally {
+      setCreatingChannel(false);
+    }
+  }
+
+  async function copyWorkspaceId() {
+    await navigator.clipboard.writeText(String(workspaceId));
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  }
+
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
     if (!channel || !draft.trim() || sending) return;
     setSending(true);
     try {
       const message = await huddleApi.sendMessage(channel.id, draft.trim());
-      setMessages((current) =>
-        current.some((item) => item.id === message.id)
-          ? current
-          : [...current, message],
-      );
+      setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message]);
       setDraft("");
     } finally {
       setSending(false);
     }
   }
+
   return (
     <main className="workspace">
-      <button
-        className="mobile-menu"
-        onClick={() => setMobileOpen(!mobileOpen)}
-        aria-label="Toggle channels"
-      >
+      <button className="mobile-menu" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Toggle channels">
         {mobileOpen ? <X /> : <Menu />}
       </button>
       <aside className={`sidebar ${mobileOpen ? "open" : ""}`}>
         <div className="workspace-name">
-          <strong>Money Stack</strong>
-          <button aria-label="Add workspace">
-            <Plus size={20} />
+          <button className="back-to-huddles" onClick={() => navigate("/workspaces")} aria-label="Back to huddles">
+            <ArrowLeft size={18} />
           </button>
+          <strong>{workspace?.name ?? "Workspace"}</strong>
+          <button onClick={() => setChannelModal(true)} aria-label="Add channel"><Plus size={20} /></button>
         </div>
+        <button className="workspace-id" type="button" onClick={copyWorkspaceId} title="Copy workspace ID">
+          <span>Workspace ID: <strong>{workspaceId}</strong></span>
+          {copied ? <small>Copied!</small> : <Copy size={14} />}
+        </button>
         <p className="section-label">CHANNELS</p>
         <nav>
           {channels.map((item) => (
-            <button
-              key={item.id}
-              className={channel?.id === item.id ? "active" : ""}
-              onClick={() => {
-                setChannel(item);
-                setMobileOpen(false);
-              }}
-            >
-              <Hash size={14} />
-              {item.name}
+            <button key={item.id} className={channel?.id === item.id ? "active" : ""} onClick={() => void selectChannel(item)}>
+              <Hash size={14} /> {item.name}
             </button>
           ))}
         </nav>
-        <button className="add-channel">
-          <Plus size={14} />
-          Add more channels
+        <button className="add-channel" onClick={() => setChannelModal(true)}>
+          <Plus size={14} /> Add a channel
         </button>
         <p className="section-label">OTHERS</p>
-        <button className="support">
-          <Headphones size={15} />
-          Support
-        </button>
-        <div className="user-footer">
-          <span className="avatar">
-            JL
-            <i />
-          </span>
-          <span>
-            <strong>Jordan Lee</strong>
-            <small>
-              <i />
-              Online
-            </small>
-          </span>
-          <ChevronDown size={16} />
-        </div>
+        <button className="support"><Headphones size={15} /> Support</button>
+        <ProfileMenu user={user} navigate={(path) => navigate(path)} />
       </aside>
       <section className="channel-view">
         <header className="channel-header">
-          <div>
-            <Hash size={15} />
-            <strong>
-              {channelState === "loading"
-                ? "Loading…"
-                : (channel?.name ?? "Channel")}
-            </strong>
-          </div>
-          <span>{channelState === "ready" ? "14 members" : ""}</span>
+          <div><Hash size={15} /><strong>{channelState === "loading" ? "Loading…" : (channel?.name ?? "Channel")}</strong></div>
+          {channel?.description && <span>{channel.description}</span>}
         </header>
         <div className="message-area">
           {channelState === "loading" ? (
-            <div className="channel-status">
-              <LoaderCircle size={40} className="spinner" />
-              <p>Loading messages…</p>
-            </div>
+            <div className="channel-status"><LoaderCircle size={40} className="spinner" /><p>Loading messages…</p></div>
           ) : channelState === "error" ? (
             <div className="channel-status">
-              <div className="error-banner">
-                <AlertCircle size={20} />
-                <span>
-                  Couldn&apos;t load this channel. Check your connection and try
-                  again.
-                </span>
-              </div>
-              <button className="retry-button" onClick={loadChannel}>
-                Retry
-              </button>
+              <div className="error-banner"><AlertCircle size={20} /><span>Couldn&apos;t load this channel. Check your connection and try again.</span></div>
+              <button className="retry-button" onClick={loadChannel}>Retry</button>
             </div>
           ) : visibleMessages.length === 0 && !sending ? (
             <div className="empty-state">
-              <div className="empty-mark">
-                <span />
-                <span />
-                <span />
-              </div>
-              <h1>
-                {channel?.name === "general" ? (
-                  <>
-                    Everyone starts in <b># general</b>
-                  </>
-                ) : (
-                  <>
-                    Welcome to <b># {channel?.name}</b>
-                  </>
-                )}
-              </h1>
-              <p>
-                {channel?.name === "general"
-                  ? "Share general information with your team here"
-                  : "This is a dedicated space for your team"}
-              </p>
+              <div className="empty-mark"><span /><span /><span /></div>
+              <h1>{channel?.name === "general" ? <>Everyone starts in <b># general</b></> : <>Welcome to <b># {channel?.name}</b></>}</h1>
+              <p>{channel?.description || (channel?.name === "general" ? "Share general information with your team here" : "This is a dedicated space for your team")}</p>
             </div>
           ) : (
             <div className="message-list">
               {visibleMessages.map((message) => {
-                const own = message.author === "Jordan Lee";
+                const own = message.authorId === user?.id;
                 return (
-                  <article
-                    key={message.id}
-                    className={own ? "own-message" : "other-message"}
-                  >
-                    {!own && (
-                      <span className="message-avatar" aria-hidden="true" />
-                    )}
+                  <article key={message.id} className={own ? "own-message" : "other-message"}>
+                    {!own && <span className="message-avatar" aria-hidden="true" />}
                     <div className="bubble-column">
-                      {!own && (
-                        <header>
-                          <strong>{message.author}</strong>
-                          <time>{message.time}</time>
-                        </header>
-                      )}
+                      {!own && <header><strong>{message.author}</strong><time>{message.time}</time></header>}
                       <p>{message.body}</p>
                       {own && <time>{message.time}</time>}
                     </div>
                   </article>
                 );
               })}
-              {sending && draft.trim() && (
-                <article className="own-message pending-message">
-                  <div className="bubble-column">
-                    <p>{draft.trim()}</p>
-                    <time>Sending…</time>
-                  </div>
-                </article>
-              )}
+              {sending && draft.trim() && <article className="own-message pending-message"><div className="bubble-column"><p>{draft.trim()}</p><time>Sending…</time></div></article>}
             </div>
           )}
         </div>
         <form className="composer" onSubmit={sendMessage}>
           <div>
-            <input
-              disabled={channelState !== "ready" || sending}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder={`Message #${channel?.name ?? "channel"}`}
-              aria-label={`Message ${channel?.name ?? "channel"}`}
-            />
-            <button
-              type="submit"
-              aria-label="Send message"
-              disabled={!draft.trim() || sending}
-            >
-              {sending ? (
-                <LoaderCircle size={17} className="spinner" />
-              ) : (
-                <Send size={17} fill="currentColor" />
-              )}
+            <input disabled={channelState !== "ready" || sending} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={`Message #${channel?.name ?? "channel"}`} aria-label={`Message ${channel?.name ?? "channel"}`} />
+            <button type="submit" aria-label="Send message" disabled={!draft.trim() || sending}>
+              {sending ? <LoaderCircle size={17} className="spinner" /> : <Send size={17} fill="currentColor" />}
             </button>
           </div>
         </form>
       </section>
-      <button
-        className="signout-button"
-        onClick={() => {
-          huddleApi.signOut();
-          navigate("login");
-        }}
-      >
-        Sign out
-      </button>
+      {channelModal && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setChannelModal(false); }}>
+          <form className="workspace-modal" role="dialog" aria-modal="true" aria-labelledby="channel-modal-title" onSubmit={createChannel}>
+            <h2 id="channel-modal-title">Create a channel</h2>
+            <p>Give conversations a focused place inside {workspace?.name ?? "this workspace"}.</p>
+            {modalError && <div className="error-banner" role="alert"><AlertCircle size={20} /><span>{modalError}</span></div>}
+            <label><span>Channel name</span><input required autoFocus minLength={2} maxLength={64} value={channelName} onChange={(event) => setChannelName(event.target.value)} placeholder="Product Design" /></label>
+            <label><span>Description (optional)</span><input maxLength={280} value={channelDescription} onChange={(event) => setChannelDescription(event.target.value)} placeholder="What this channel is for" /></label>
+            <button className="primary-button" type="submit" disabled={creatingChannel}>{creatingChannel ? "Creating…" : "Create channel"}</button>
+            <button className="modal-back" type="button" onClick={() => setChannelModal(false)}>← Back</button>
+          </form>
+        </div>
+      )}
     </main>
   );
 }
+function SettingsScreen() {
+  const navigate = useNavigate();
+  const [user, setUser] = useState<User | null>(huddleApi.getCurrentUser());
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    huddleApi.getProfile().then(setUser).finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <main className="settings-screen">
+      <header>
+        <button onClick={() => navigate(-1)} aria-label="Go back"><ArrowLeft size={19} /></button>
+        <img src="/figma/huddle-logo.png" alt="Huddle" />
+      </header>
+      <section className="settings-card">
+        <div className="settings-avatar">{initials(user?.name)}</div>
+        <div>
+          <h1>Settings</h1>
+          <p>Your account details are managed by your Huddle profile.</p>
+        </div>
+        <label><span>Name</span><input readOnly value={loading ? "Loading…" : (user?.name ?? "")} /></label>
+        <label><span>Email</span><input readOnly value={loading ? "Loading…" : (user?.email ?? "")} /></label>
+        <button className="secondary-button" onClick={() => navigate("/workspaces")}>Back to huddles</button>
+      </section>
+    </main>
+  );
+}
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  return huddleApi.isAuthenticated() ? children : <Navigate to="/login" replace />;
+}
+
 export default function App() {
-  const [screen, setScreen] = useState<Screen>("welcome");
-  const [workspaceId, setWorkspaceId] = useState<number | null>(null);
-  const openWorkspace = (id: number) => {
-    setWorkspaceId(id);
-    setScreen("chat");
-  };
-  if (screen === "signup" || screen === "login")
-    return <AuthScreen mode={screen} navigate={setScreen} />;
-  if (screen === "signup-success")
-    return <SignupSuccess navigate={setScreen} />;
-  if (screen === "huddle-home")
-    return <HuddleHome openWorkspace={openWorkspace} />;
-  if (screen === "chat" && workspaceId)
-    return <Workspace workspaceId={workspaceId} navigate={setScreen} />;
-  return <Welcome navigate={setScreen} />;
+  const navigate = useNavigate();
+  const go = (path: string) => navigate(path);
+  return (
+    <Routes>
+      <Route path="/" element={<Welcome navigate={go} />} />
+      <Route path="/signup" element={<AuthScreen mode="signup" navigate={go} />} />
+      <Route path="/signup/success" element={<SignupSuccess navigate={go} />} />
+      <Route path="/login" element={<AuthScreen mode="login" navigate={go} />} />
+      <Route path="/workspaces" element={<ProtectedRoute><HuddleHome navigate={go} openWorkspace={(id) => navigate(`/workspaces/${id}`)} /></ProtectedRoute>} />
+      <Route path="/workspaces/:workspaceId" element={<ProtectedRoute><Workspace /></ProtectedRoute>} />
+      <Route path="/workspaces/:workspaceId/channels/:channelId" element={<ProtectedRoute><Workspace /></ProtectedRoute>} />
+      <Route path="/settings" element={<ProtectedRoute><SettingsScreen /></ProtectedRoute>} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
 }

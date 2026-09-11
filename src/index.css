@@ -476,6 +476,8 @@ button {
 }
 .huddle-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 14px;
 }
 .huddle-actions .primary-button,
@@ -563,6 +565,12 @@ button {
   font-size: 14px;
   line-height: 1.5;
 }
+.modal-hint {
+  margin-top: -10px;
+  color: var(--secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
 .workspace {
   min-height: 100vh;
   display: grid;
@@ -584,10 +592,43 @@ button {
   justify-content: space-between;
   align-items: center;
   padding: 0 8px 20px;
+  gap: 8px;
+}
+.workspace-name strong {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .workspace-name button {
   border: 0;
   background: none;
+  display: grid;
+  place-items: center;
+  padding: 4px;
+}
+.workspace-name .back-to-huddles {
+  color: var(--secondary);
+}
+.workspace-id {
+  width: calc(100% - 16px);
+  min-height: 38px;
+  margin: -8px 8px 14px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid #ffd2bd;
+  border-radius: 8px;
+  background: var(--brand-subtle);
+  color: #6f3a22;
+  font-size: 12px;
+}
+.workspace-id small {
+  color: #1cac44;
+  font-weight: 600;
 }
 .section-label {
   margin: 5px 0 8px;
@@ -634,6 +675,12 @@ button {
   align-items: center;
   gap: 10px;
   font-size: 13px;
+  width: calc(100% + 16px);
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  background: white;
+  text-align: left;
 }
 .user-footer > span:nth-child(2) {
   display: flex;
@@ -653,6 +700,69 @@ button {
   background: #22c55e;
   border-radius: 50%;
   display: inline-block;
+}
+.profile-menu-wrap {
+  position: relative;
+  margin-top: auto;
+}
+.profile-menu-wrap .user-footer {
+  margin-top: 0;
+}
+.profile-menu-wrap.compact {
+  margin-top: 0;
+}
+.profile-popup {
+  position: absolute;
+  z-index: 30;
+  left: 12px;
+  bottom: 70px;
+  width: 236px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 12px 36px rgba(31, 31, 31, 0.14);
+}
+.profile-menu-wrap.compact .profile-popup {
+  left: 52px;
+  bottom: 0;
+}
+.profile-popup-user {
+  padding: 8px 10px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+.profile-popup-user strong,
+.profile-popup-user span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-popup-user span {
+  color: var(--secondary);
+  font-size: 12px;
+}
+.profile-popup > button {
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: white;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+}
+.profile-popup > button:hover {
+  background: var(--canvas);
+}
+.profile-popup > button.danger {
+  color: #d63b3b;
 }
 .avatar {
   width: 40px;
@@ -879,6 +989,81 @@ button {
 }
 .pending-message {
   opacity: 0.55;
+}
+.settings-screen {
+  min-height: 100vh;
+  background: var(--canvas);
+}
+.settings-screen > header {
+  height: 76px;
+  padding: 0 32px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  background: white;
+}
+.settings-screen > header button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: white;
+}
+.settings-screen > header img {
+  width: 130px;
+}
+.settings-card {
+  width: min(520px, calc(100% - 40px));
+  margin: 56px auto;
+  padding: 36px;
+  border: 1px solid #e8e8e8;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  background: white;
+  box-shadow: 0 14px 40px rgba(31, 31, 31, 0.06);
+}
+.settings-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--brand);
+  color: white;
+  font-size: 22px;
+  font-weight: 700;
+}
+.settings-card h1 {
+  margin: 0;
+  font-size: 26px;
+}
+.settings-card p {
+  margin: 4px 0 0;
+  color: var(--secondary);
+  font-size: 14px;
+}
+.settings-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #777;
+  font-size: 12px;
+}
+.settings-card input {
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--canvas);
+  color: var(--text);
+}
+.settings-card .secondary-button {
+  width: 100%;
 }
 .mobile-menu,
 .signout-button {

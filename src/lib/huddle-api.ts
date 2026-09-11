@@ -5,6 +5,7 @@ const API_URL =
 const SOCKET_URL =
   import.meta.env.VITE_SOCKET_URL ?? "https://huddle-api-yott.onrender.com";
 const TOKEN_KEY = "huddle_access_token";
+const USER_KEY = "huddle_user";
 
 export type User = { id: number; name: string; email: string };
 export type Workspace = { id: number; name: string };
@@ -46,10 +47,14 @@ function readToken() {
   return localStorage.getItem(TOKEN_KEY) ?? sessionStorage.getItem(TOKEN_KEY);
 }
 
-function saveToken(token: string, persistent: boolean) {
+function saveSession(token: string, user: User, persistent: boolean) {
   localStorage.removeItem(TOKEN_KEY);
   sessionStorage.removeItem(TOKEN_KEY);
-  (persistent ? localStorage : sessionStorage).setItem(TOKEN_KEY, token);
+  localStorage.removeItem(USER_KEY);
+  sessionStorage.removeItem(USER_KEY);
+  const storage = persistent ? localStorage : sessionStorage;
+  storage.setItem(TOKEN_KEY, token);
+  storage.setItem(USER_KEY, JSON.stringify(user));
 }
 
 async function request<T>(path: string, options: RequestInit = {}) {
@@ -116,7 +121,7 @@ export const huddleApi = {
       "/auth/register",
       { method: "POST", body: JSON.stringify(payload) },
     );
-    saveToken(response.data.token, true);
+    saveSession(response.data.token, response.data.user, true);
     return response.data.user;
   },
 
@@ -131,7 +136,7 @@ export const huddleApi = {
         }),
       },
     );
-    saveToken(response.data.token, payload.remember);
+    saveSession(response.data.token, response.data.user, payload.remember);
     socket?.disconnect();
     socket = undefined;
     return response.data.user;
@@ -140,6 +145,25 @@ export const huddleApi = {
   async listWorkspaces() {
     const response = await request<Workspace[]>("/workspaces");
     return response.data;
+  },
+
+  async getProfile() {
+    const response = await request<User>("/auth/profile");
+    return response.data;
+  },
+
+  getCurrentUser(): User | null {
+    const raw = localStorage.getItem(USER_KEY) ?? sessionStorage.getItem(USER_KEY);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as User;
+    } catch {
+      return null;
+    }
+  },
+
+  isAuthenticated() {
+    return Boolean(readToken());
   },
 
   async createWorkspace(name: string) {
@@ -160,6 +184,28 @@ export const huddleApi = {
       `/workspaces/${workspaceId}/channels`,
     );
     return response.data;
+  },
+
+  async createChannel(
+    workspaceId: number,
+    name: string,
+    description?: string,
+  ) {
+    const response = await request<Channel>(
+      `/workspaces/${workspaceId}/channels`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: name.trim(),
+          description: description?.trim() || undefined,
+        }),
+      },
+    );
+    return response.data;
+  },
+
+  async joinChannel(channelId: number) {
+    await request(`/channels/${channelId}/join`, { method: "POST" });
   },
 
   async loadMessages(channelId: number) {
@@ -203,6 +249,8 @@ export const huddleApi = {
   signOut() {
     localStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem(USER_KEY);
     socket?.disconnect();
     socket = undefined;
   },
