@@ -464,6 +464,20 @@ function Workspace({ navigate }: { navigate: (screen: Screen) => void }) {
   useEffect(() => {
     void loadChannel();
   }, [channel]);
+  useEffect(() => {
+    return huddleApi.subscribeToMessages(channel, (message) => {
+      setMessages((current) => {
+        const existingIndex = current.findIndex(
+          (item) => item.id === message.id,
+        );
+        if (existingIndex === -1) return [...current, message];
+
+        const next = [...current];
+        next[existingIndex] = message;
+        return next;
+      });
+    });
+  }, [channel]);
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
     if (!draft.trim() || sending) return;
@@ -473,7 +487,11 @@ function Workspace({ navigate }: { navigate: (screen: Screen) => void }) {
         channel,
         body: draft.trim(),
       });
-      setMessages((current) => [...current, message]);
+      setMessages((current) =>
+        current.some((item) => item.id === message.id)
+          ? current
+          : [...current, message],
+      );
       setDraft("");
     } finally {
       setSending(false);

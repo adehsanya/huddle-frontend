@@ -20,4 +20,8 @@ npm run preview
 
 ## Backend integration
 
-Network calls are isolated in `src/lib/huddle-api.ts`. It currently provides local data so the frontend can run independently. Replace that implementation with the backend API and Socket.IO client once the server URL, authentication format, events, and payload schemas are confirmed. See `docs/REALTIME_INTEGRATION.md` for the handoff checklist.
+Network calls are isolated in `src/lib/huddle-api.ts`. Channel messages use
+Socket.IO with automatic reconnection, room join/leave events, acknowledgements,
+and incoming-message subscriptions. The socket URL and event names are configured
+through Vite environment variables. See `docs/REALTIME_INTEGRATION.md` for the
+backend handoff checklist.

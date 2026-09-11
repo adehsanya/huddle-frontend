@@ -1,6 +1,20 @@
 # Realtime messaging handoff
 
-The frontend messaging UI is complete and currently uses the in-memory service in `src/lib/huddle-api.ts`. The backend team can replace that implementation without changing the screen components.
+The frontend messaging UI connects through Socket.IO in
+`src/lib/huddle-api.ts`. It joins and leaves channel rooms, listens for incoming
+messages, sends messages with acknowledgement support, reconnects automatically,
+and prevents duplicate messages in the UI.
+
+The current event-name defaults are:
+
+- `join_channel`
+- `leave_channel`
+- `send_message`
+- `new_message`
+
+They can be changed without editing source code through the
+`VITE_SOCKET_*_EVENT` environment variables. The backend team must confirm that
+these names and payload fields match the server implementation.
 
 ## Backend details needed
 
