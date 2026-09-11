@@ -1,6 +1,6 @@
 # Realtime messaging handoff
 
-The frontend messaging UI is complete and currently uses the adapter in `lib/huddle-api.ts`. The backend team can replace the mock methods without changing the screen components.
+The frontend messaging UI is complete and currently uses the in-memory service in `src/lib/huddle-api.ts`. The backend team can replace that implementation without changing the screen components.
 
 ## Backend details needed
 

@@ -20,4 +20,4 @@ npm run preview
 
 ## Backend integration
 
-The app currently uses a mock adapter in `src/lib/huddle-api.ts`. Replace those methods with the backend API and Socket.IO client once the backend team supplies the URL, authentication format, event names, and payload schemas. See `docs/REALTIME_INTEGRATION.md` for the handoff checklist.
+Network calls are isolated in `src/lib/huddle-api.ts`. It currently provides local data so the frontend can run independently. Replace that implementation with the backend API and Socket.IO client once the server URL, authentication format, events, and payload schemas are confirmed. See `docs/REALTIME_INTEGRATION.md` for the handoff checklist.
